@@ -53,6 +53,8 @@ type Webhook struct {
 	ErrorMessage      string `json:"last_error_message"`
 	SyncErrorUnixtime int64  `json:"last_synchronization_error_date"`
 
+	httpServer *http.Server
+
 	TLS      *WebhookTLS
 	Endpoint *WebhookEndpoint
 
@@ -128,25 +130,30 @@ func (h *Webhook) Poll(b *Bot, dest chan Update, stop chan struct{}) {
 	h.dest = dest
 	h.bot = b
 
+	if h.httpServer != nil {
+		h.waitForStop(stop)
+		return
+	}
+
 	if h.Listen == "" {
 		h.waitForStop(stop)
 		return
 	}
 
-	s := &http.Server{
+	h.httpServer = &http.Server{
 		Addr:    h.Listen,
 		Handler: h,
 	}
 
 	go func(stop chan struct{}) {
 		h.waitForStop(stop)
-		s.Shutdown(context.Background())
+		h.httpServer.Shutdown(context.Background())
 	}(stop)
 
 	if h.TLS != nil {
-		s.ListenAndServeTLS(h.TLS.Cert, h.TLS.Key)
+		h.httpServer.ListenAndServeTLS(h.TLS.Cert, h.TLS.Key)
 	} else {
-		s.ListenAndServe()
+		h.httpServer.ListenAndServe()
 	}
 }
 
